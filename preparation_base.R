@@ -44,6 +44,8 @@ base_id_mois_arret <-base_arret_trav[
   by=.(id_assure,motif_arret, date_dernier_jour_travaille)][
     ,.(id_assure, motif_arret, annee=floor(date), mois = round((date-floor(date))*12+1))
   ]
+base_id_mois_arret = unique(base_id_mois_arret)
+
 ## création de la vraie base id*mois (un individu peut avoir plusieurs versements le même mois)
 base_id_mois <- base_versement[, 
                              .(montant_net_verse = sum(montant_net_verse),
