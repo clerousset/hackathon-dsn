@@ -46,20 +46,46 @@ On constitue une première base avec les informations individuelles, notamment l
                           
 
 
-```{r base ind, echo=FALSE, message=FALSE, warning=FALSE}
+```{r base ind, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 head(base_finale)
 ```
 
 ### Statistiques descriptives sur la base
 
+A quoi ressemblent nos données ? 
 
-## Méthodologie
+On a reconstruit les carrières de nos 10 000 individus sur 5 ans. On connaît la position professionnelle chaque année, de l’âge de XX ans jusqu’à XX ans. Cette position est codée de la manière suivante : les codes 1 à 6 correspondent xxX. 
 
 
-## Résultats et enseignements 
+
+
+
+## Méthodologie de l'analyse de séquences
+
+
+La méthodologie est fortement inspirée de l'analyse de Nicolas Robette intitulé L’analyse de séquences : une introduction avec le logiciel R et le package TraMineR et publié sur le blog Quanti (http://quanti.hypotheses.org/686/).
+
+L’objectif principal de l'analyse de séquences est d’identifier — parmi des séquences constituées de séries d’états successifs — les régularités, les ressemblances, puis le plus souvent. Cette analyse produit des typologies de « séquences-types ». Dans notre cas, cela peut avoir la forme d'un individu pendant 5 ans en activité, ou au contraire sans emploi, ou alternant des periodes d'activités et d'inactivités. En ce sens, l’analyse de séquences constitue un moyen de décrire mais aussi de mieux comprendre les trajectoires de carrières des individus.
+
+Sous R, le package TraMineR fournit une solution complète : on y trouve l’appariement optimal mais aussi d’autres algorithmes alternatifs, ainsi que de nombreuses fonctions de description des séquences et de représentation graphique.
+
+L’appariement optimal consiste, pour chaque paire de séquences, à compter le nombre minimal de modifications (substitutions, suppressions, insertions) qu’il faut faire subir à l’une des séquences pour obtenir l’autre.
+
+Une matrice des distances ou des dissimilarités entre séquences peut ensuite être utilisée pour une classification ascendante hiérarchique, qui permet de regrouper les séquences en un certain nombre de « classes » en fonction de leur proximité :
+
+
+```{r dendogram, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+plot(as.dendrogram(seq.dist), leaflab = "none")
+```
+
+De même, on peut représenter les sauts d’inertie qui suggère que 4 grandes classifications sont pertinentes. L’observation, sur ce dendogramme ou sur la courbe des sauts d’inertie, des sauts d’inertie des dernières étapes de la classification peut servir de guide pour déterminer le nombre de classes que l’on va retenir pour la suite des analyses. Une première inflexion dans la courbe des sauts d’inertie apparaît au niveau d’une partition en 5 classes.
+
+
+```{r dendogramplot, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#plot(as.dendrogram(seq.dist), leaflab = "none")
+```
+
+## Résultats et enseignements à partir des enseignements graphiques 
 
 
 En 2021, parmi les personnes âgées de 25 à 60 ans percevant une rémunération, XXX % le sont encore trois mois après, XX % se retrouvent sans remunération. Ventilation par âge / sexe ?
-
-
-
