@@ -1,13 +1,65 @@
 ---
-title: "Hackathon"
+title: "Analyse trajectoires types "
 author: "Coraline Best, Léo Quennesson, Clément Rousset"
 date: "2024-05-14"
-output: html_document
+output: 
+   html_document:
+    theme: united
+    toc: yes
+    toc_float:
+      collapsed: true
 ---
 
 ```{r setup, include=FALSE, echo=FALSE}
 library(pacman)
-p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, RPostgreSQL)
+p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, RPostgres)
 
 ```
+
+
+# Objectifs de l'étude 
+
+Les carrières des personnes changent au fil du temps pour plusieurs raisons. Les transitions peuvent être analysées au travers du prisme de l'âge des individus, mais également du type d'emploi occupé et des grands événements de la vie.
+
+Si l'on considère l'âge de l'individu, les transitions professionnelles sont : 
+
+- Avant leur vie professionnelle, les individus participent pas ou peu au marché du travail afin **d'étudier**; 
+- Par la suite, les individus participent par la suite au marché du travail, cherchant un **emploi** qui correspond à leurs qualifications et à leurs intérêts. 
+- Enfin en fin de carrière, les individus quittent leur emploi pour bénéficier de leur **retraite**.
+
+Pendant les périodes de participation au marché du travail, de nombreux évènements peuvent interrompre ou mettre **fin à un contrat**. Que ce soit un licenciement ou un changement de poste, un arrêt maladie ou de formation, un congé sabatique, ces changements de situation viennent modifier le revenu des individus. 
+
+Ces changements de situation, de nature diverse, touchent inégalement les individus. A titre illustratif, il est possible de ventiler le marché du travail entre des emplois à temps plein et partiel. On peut ainsi se demander si ces deux formes d'emplois sont complémentaires dans la vie d'un individu. Ces transitions font partie intégrante de la vie professionnelle : afin de répondre à ces questions, l'étude doit nécessairement prendre en compte les facteurs personnels, économiques ou encore sociaux des individus.
+
+**L'objectif de cette étude** est de dresser un **portrait robot** des principales transitions rencontrées dans la vie des individus au cours de leur vie professionnelle. L'objectivation d'une part, la quantification d'autre part de ces étapes importantes, serviront à la DREES à affiner la simulation des transitions professionnelles. 
+
+L'objectif sur plus long terme est de voir si le rôle contra-cyclique du système de protection sociale est en cohérence avec ces périodes d'interruption comme de reprise. En effet prestations sociales - et en premier lieu le RSA, la prime d'activité, l'allocation de solidarité spécifique et les allocations logement -cotisations et impôts participent au lissage du revenu des individus pendant ces périodes de transition.
+
+## Conception de la base 
+
+On constitue une première base avec les informations individuelles, notamment le sexe et la date de naissance, en se restraignant à 10000 individus pour des questions techniques. On ajoute à ces individus les salaires mensuels percus (montant net versé) : les lignes sont en conséquence dupliquées 60 fois (12 mois sur 5 ans) pour chaque individus. Enfin sur cette base cylindrée on ajoute les informations existantes portant sur : 
+- la nature du contrat : CDI, CDD
+- la quotité horaire travaillée : temps plein ou partiel
+- secteur : agriculteur, artisan (10 modalités)
+- raison de rupture : licenciements, ruptures, fin de contrat
+- CPS
+                          
+
+
+```{r base ind, echo=FALSE, message=FALSE, warning=FALSE}
+head(base_finale)
+```
+
+### Statistiques descriptives sur la base
+
+
+## Méthodologie
+
+
+## Résultats et enseignements 
+
+
+En 2021, parmi les personnes âgées de 25 à 60 ans percevant une rémunération, XXX % le sont encore trois mois après, XX % se retrouvent sans remunération. Ventilation par âge / sexe ?
+
+
 
