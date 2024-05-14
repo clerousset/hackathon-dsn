@@ -1,0 +1,13 @@
+---
+title: "Hackathon"
+author: "Coraline Best, Léo Quennesson, Clément Rousset"
+date: "2024-05-14"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+library(pacman)
+p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, RPostgreSQL)
+
+```
+
