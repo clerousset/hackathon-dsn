@@ -39,13 +39,15 @@ base_arret_trav <- unique(base_arret_trav)
 base_arret_trav[
   , date_fin := year(date_dernier_jour_travaille)+(month(date_dernier_jour_travaille)-1)/12][
     , date_reprise := year(date_reprise)+(month(date_reprise)-1)/12]
+
+# on enleve qq doublons
 base_id_mois_arret <-base_arret_trav[
   ,.(date = seq(fcoalesce(date_fin[1],2019), fcoalesce(date_reprise[1], 2024), by=1/12)),
   by=.(id_assure,motif_arret, date_dernier_jour_travaille)][
     ,.(id_assure, motif_arret, annee=floor(date), mois = round((date-floor(date))*12+1))
   ]
 base_id_mois_arret = unique(base_id_mois_arret)
-
+base_id_mois_arret = base_id_mois_arret[, .(motif_arret=motif_arret[1]),.(id_assure, annee, mois)]
 ## création de la vraie base id*mois (un individu peut avoir plusieurs versements le même mois)
 base_id_mois <- base_versement[, 
                              .(montant_net_verse = sum(montant_net_verse),
@@ -71,4 +73,6 @@ base_finale <- base_cylindree[, .(id_assure, annee, mois, statut = fcase(
   quotite >= 150, "temps plein",
   default = "temps partiel"))]
  base_finale[,.N,statut]
+ 
+ 
  
