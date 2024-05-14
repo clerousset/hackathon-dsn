@@ -39,7 +39,7 @@ base_id_mois <- base_versement[,
                              by=.(id_assure, annee, mois)]
 
 ## création de la base individuelle
-base_id <- unique(base_id_mois0[, .(id_assure, date_naissance, sexe)])
+base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe)])
 
 ## préapration de la base cylindrée (pour remplir tous les mois, même qd y a pas de versement pour l'id)
 base_cylindree=CJ(id_assure = unique(base_id_mois$id_assure), annee=2019:2023, mois=1:12)
