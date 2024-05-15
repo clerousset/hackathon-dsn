@@ -12,7 +12,7 @@ output:
 
 ```{r setup, include=FALSE, echo=FALSE}
 library(pacman)
-p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, RPostgres)
+p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, data.table,RPostgres, questionr)
 
 ```
 
@@ -52,7 +52,7 @@ con <- dbConnect(RPostgres::Postgres(),
 
 On constitue une première base avec les informations individuelles, notamment le sexe et la date de naissance, en se restraignant à 10000 individus appartenant à la catégorie des XXXX. 
 
-```{r import, echo=TRUE, message=FALSE, warning=FALSE}
+```{r import, message=FALSE, warning=FALSE, include=FALSE}
 # les informations individuelles
 base_id <- dbGetQuery(con,"SELECT id as id_assure, sexe, date_naissance,niveau_formation_plus_eleve FROM ddadtassure
                       ORDER BY id
@@ -81,8 +81,8 @@ Enfin sur cette base cylindrée on ajoute les informations existantes portant su
 - la nature du contrat (CDI, CDD);
 - la quotité horaire travaillée : temps plein ou partiel ; 
 - secteur : agriculteur, artisan ... (10 modalités);
-- raison de rupture : licenciements, ruptures, fin de contrat 
-- CPS
+- raison de rupture : licenciements, ruptures, fin de contrat ;
+- CPS.
 
 ```{r contrat, message=FALSE, warning=FALSE, include=FALSE}
 ## base arrêt travail
@@ -132,18 +132,28 @@ base_finale <- base_cylindree[, .(id_assure, annee, mois, statut = fcase(
 ```
 
 
-```{r base ind, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+```{r base ind, echo=FALSE, message=FALSE, warning=FALSE}
 head(base_finale)
 ```
 
-### Statistiques descriptives sur la base
+Afin de renforcer la fiabilité des données, on ne garde que les données entre 2021 et mai 2023. On observe en effet beaucoup de données manquantes avant cette période.
 
-A quoi ressemblent nos données ? 
+```{r filtre année, include=FALSE}
+base_finale_reduit <- base_finale[annee >= 2021 & !(annee == 2023 & mois > 5)]
+```
 
-On a reconstruit les carrières de nos 10 000 individus sur 5 ans. On connaît la position professionnelle chaque année, de l’âge de XX ans jusqu’à XX ans. Cette position est codée de la manière suivante : les codes 1 à 6 correspondent xxX. 
+Enfin on ne garde dans cette base finale que les individus qui ont effectivement 60 mois renseignés et qui connaissent un changement de statut. 
 
+```{r filtre age changement, include=FALSE}
+# on ne garde que les gens qui ont au moins un chgt de statut observé
+id_assure_ayant_chgt <- base_finale_reduit[, .(modif=max(rleid(statut))), by = "id_assure"][modif >1]$id_assure
+base_finale_reduit <- base_finale_reduit[id_assure %in% id_assure_ayant_chgt]
 
-
+# on retire les moins de 25 ans et plus de 60 ans
+base_id[,annee_naissance := as.integer(substring(date_naissance, 5))]
+base_id[, categorie := fcase(annee_naissance >1996, "jeune", annee_naissance < 1960, "vieux", default = "base")]
+base_finale_reduit <- base_id[,.(id_assure, categorie)][base_finale_reduit, on ="id_assure"]
+```
 
 
 ## Méthodologie de l'analyse de séquences
@@ -157,18 +167,45 @@ Sous R, le package TraMineR fournit une solution complète : on y trouve l’app
 
 L’appariement optimal consiste, pour chaque paire de séquences, à compter le nombre minimal de modifications (substitutions, suppressions, insertions) qu’il faut faire subir à l’une des séquences pour obtenir l’autre.
 
+```{r analyse sequence, include=FALSE}
+suite <- seqdef(
+  data = dcast(base_finale_reduit[categorie =="base", !c("categorie")], id_assure ~ annee + mois )[,!"id_assure"])
+suite.om = seqdist(suite, method ="LCS")
+```
+
+
 Une matrice des distances ou des dissimilarités entre séquences peut ensuite être utilisée pour une classification ascendante hiérarchique, qui permet de regrouper les séquences en un certain nombre de « classes » en fonction de leur proximité :
 
 
-```{r dendogram, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-plot(as.dendrogram(seq.dist), leaflab = "none")
+```{r dendogram, echo=FALSE, message=FALSE, warning=FALSE}
+suite.dist <- hclust(as.dist(suite.om), method = "ward.D2")
+plot(as.dendrogram(suite.dist), leaflab = "none")
 ```
 
 De même, on peut représenter les sauts d’inertie qui suggère que 4 grandes classifications sont pertinentes. L’observation, sur ce dendogramme ou sur la courbe des sauts d’inertie, des sauts d’inertie des dernières étapes de la classification peut servir de guide pour déterminer le nombre de classes que l’on va retenir pour la suite des analyses. Une première inflexion dans la courbe des sauts d’inertie apparaît au niveau d’une partition en 5 classes.
 
 
-```{r dendogramplot, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-#plot(as.dendrogram(seq.dist), leaflab = "none")
+```{r dendogramplot, message=FALSE, warning=FALSE, include=FALSE, fig.width=6, fig.height=4}
+## graphe pour voir le nombre de classes qu'on veut
+plot(sort(suite.dist$height, decreasing = TRUE)[1:20], type = "s", xlab = "nb de classes", ylab = "inertie")
+
+## on regarde les ruptures (= marches qui deviennent d'un coup plus petites) et on choisit le nombre de classes associées
+nbcl = 4
+suite.part = cutree(suite.dist, nbcl)
+
+# analyse graphique
+```
+
+
+```{r dendogramplot, message=FALSE, warning=FALSE, include=FALSE, fig.width=6, fig.height=4}
+seqdplot(suite, group = suite.part, border = NA)
+#seqIplot(suite, group = suite.part)
+seqfplot(suite, group = suite.part) # les suites les plus fréquentes
+seqmsplot(suite, group = suite.part)
+seqrplot(suite, group =suite.part, dist.matrix = suite.om, criterion = "dist")
+
+freq(suite.part)
+cprop(table(suite.part, base_id[id_assure %in% unique(base_finale_reduit[categorie=="normal"]$id_assure)]$sexe))
 ```
 
 ## Résultats et enseignements à partir des enseignements graphiques 
