@@ -1,7 +1,8 @@
 library("RPostgres")
 library("DBI")
 library("data.table")
-
+library("dplyr")
+library("zoo")
 # connexion avec la base de données
 con <- dbConnect(RPostgres::Postgres(),
                   host='10.0.0.1',
@@ -18,13 +19,16 @@ base_id <- dbGetQuery(con,"SELECT id as id_assure, sexe, date_naissance,niveau_f
 # on se limte aux identifiant < à une certaine valeur
 tail(sort(base_id$id))# 86357
 
+#total
 
+
+#Agriculteurs
 ## grosse requête de la base versement
-base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_assure, nature_contrat, quotite, quotite_categorie, statut_conventionnel, modalite_temps, sexe, date_naissance, motif_rupture, date_fin_contrat, pcs_ese,statut_emploi FROM ddadtversement
+base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_assure, nature_contrat, quotite, quotite_categorie, statut_conventionnel, modalite_temps, sexe, date_naissance, motif_rupture, date_fin_contrat, pcs_ese,statut_emploi, niveau_formation_plus_eleve FROM ddadtversement
                           LEFT JOIN ddadtemployeur_assure ON ddadtversement.id_employeur_assure = ddadtemployeur_assure.id
                           LEFT JOIN ddadtcontrat ON ddadtemployeur_assure.id = ddadtcontrat.id_employeur_assure
                           LEFT JOIN ddadtassure ON ddadtemployeur_assure.id_assure = ddadtassure.id
-                           WHERE id_assure < 86357")
+                           WHERE statut_conventionnel= '01'" )
 setDT(base_versement)  
 base_versement[, mois := month(date_versement)][, annee := year(date_versement)]
 
@@ -33,7 +37,7 @@ base_versement[, mois := month(date_versement)][, annee := year(date_versement)]
 base_arret_trav<- dbGetQuery(con, "SELECT id_assure, motif_arret, date_dernier_jour_travaille, date_reprise FROM ddadtcontrat
                              LEFT JOIN ddadtarret_trav ON  ddadtcontrat.id= ddadtarret_trav.id_contrat
                              LEFT JOIN ddadtemployeur_assure ON ddadtcontrat.id_employeur_assure = ddadtemployeur_assure.id
-                             WHERE id_assure < 86357")
+                             WHERE statut_conventionnel= '01'")
 setDT(base_arret_trav)
 base_arret_trav <- unique(base_arret_trav)
 base_arret_trav[
@@ -52,11 +56,11 @@ base_id_mois_arret = base_id_mois_arret[, .(motif_arret=motif_arret[1]),.(id_ass
 base_id_mois <- base_versement[, 
                              .(montant_net_verse = sum(montant_net_verse),
                                quotite = sum(quotite)),                             
-                             by=.(id_assure, annee, mois)]
+                             by=.(id_assure, annee, mois,sexe)]
 
 
 ## création de la base individuelle
-base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe)])
+base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe, niveau_formation_plus_eleve)])
 
 ## préapration de la base cylindrée (pour remplir tous les mois, même qd y a pas de versement pour l'id)
 base_cylindree=CJ(id_assure = unique(base_id_mois$id_assure), annee=2019:2023, mois=1:12)
@@ -65,7 +69,7 @@ base_cylindree <- base_id_mois[base_cylindree, on = .(id_assure, annee,mois)]
 base_cylindree <- base_id_mois_arret[base_cylindree, on = .(id_assure, annee,mois)]
 
 ## création de la variable de statut mensuel
-base_finale <- base_cylindree[, .(id_assure, annee, mois, statut = fcase(
+base_finale_agr <- base_cylindree[, .(id_assure, annee, mois,sexe, statut = fcase(
   is.na(montant_net_verse), "absent",
   motif_arret=="01", "arret maladie", 
   motif_arret %in% c("02","03"),"Congé maternité/paternité", 
@@ -75,4 +79,25 @@ base_finale <- base_cylindree[, .(id_assure, annee, mois, statut = fcase(
  base_finale[,.N,statut]
  
  
+ # Utiliser fill pour propager les valeurs du sexe
+ df_agr<- base_finale_agr %>%
+   group_by(id_assure) %>%
+   arrange(id_assure, annee, mois) %>%
+   fill(sexe, .direction = "downup")
+ 
+ skim(df_agr)
+ df_agr<- na.omit(df_agr)
+ 
+ base_finale_agr<- base_finale_agr %>%
+   group_by(id_assure) %>%
+   do(remplir_sexe(.))
+ 
+ skim(base_finale_agr)
+ 
+#Stat descriptives agriculteurs
+graph1<- ggplot(df_agr, aes(x=sexe, fill=statut)) +geom_bar(position = "dodge") + labs(title="Statistiques descriptives pour les agriculteurs",
+                                                                                                 x="Sexe",
+                                                                                                 y="Nombre",
+                                                                                                 fill= "Statut") + theme_bw()
+graph1 
  

@@ -1,5 +1,5 @@
 ---
-title: "Analyse trajectoires types des XXX "
+title: "Analyse des trajectoires types des carrières des agriculteurs comparativement à la population générale"
 author: "Coraline Best, Léo Quennesson, Clément Rousset"
 date: "2024-05-14"
 output: 
@@ -12,16 +12,16 @@ output:
 
 ```{r setup, include=FALSE, echo=FALSE}
 library(pacman)
-p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, data.table,RPostgres, questionr)
+p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMineR, DBI, data.table,RPostgres, questionr, kableExtra)
 
 ```
 
 
 # Objectifs de l'étude 
 
-Cette étude vise à détailler les évolutions des carrières des individus sur une période de 5 ans. 
+Cette étude vise à détailler les évolutions des carrières des agriculteurs sur une période de 5 ans. Ces évolutions seront comparées aux évolutions de la population générale. 
 
-Ces transitions peuvent être analysées au travers du prisme de l'âge des individus, mais également du type d'emploi occupé et des grands événements de la vie.
+Ces transitions peuvent être analysées au travers du prisme de l'âge des individus, mais également du type d'emploi occupé et des grands événements de la vie (naissance d'un enfant, études et formation, retraite).
 
 Si l'on considère l'âge de l'individu, les transitions professionnelles peuvent être analysées : 
 
@@ -33,13 +33,15 @@ Pendant les périodes de participation au marché du travail, de nombreux évèn
 
 Ces changements de situation, de nature diverse, touchent inégalement les individus. A titre illustratif, il est possible de ventiler le marché du travail entre des emplois à temps plein et partiel. On peut ainsi se demander si ces deux formes d'emplois sont complémentaires dans la vie d'un individu. Ces transitions font partie intégrante de la vie professionnelle : afin de répondre à ces questions, l'étude doit nécessairement prendre en compte les facteurs personnels, économiques ou encore sociaux des individus.
 
-**L'objectif de cette étude** est de dresser un **portrait robot** des principales transitions rencontrées dans la vie des individus au cours de leur vie professionnelle. L'objectivation et la quantification de ces transitions  serviront dans une seconde phase à la DREES à affiner les simulations des transitions professionnelles par population concernée. 
+**L'objectif de cette étude est de dresser un portrait robot des principales transitions rencontrées dans la vie des individus au cours de leur vie professionnelle**. 
+
+L'objectivation et la quantification de ces transitions  serviront dans une seconde phase à la DREES à affiner les simulations des transitions professionnelles par population concernée. 
 
 Les variations de salaire liées à ces transitions professionnelles sont à mettre en regard avec un ensemble de mécanisme visant à limiter et à lisser dans le temps les pertes de revenus. En effet prestations sociales - et en premier lieu le RSA, la prime d'activité, l'allocation de solidarité spécifique et les allocations logement - mais aussi les cotisations et impôts, participent au lissage du revenu des individus pendant ces périodes de transition. 
 
-Cette étude permettra donc *infine* de souligner la cohérence et l'efficacité du système sociofiscal au périodes de transition professionnelle et, le cas échéant, visera à proposer des réformes pertinentes.
+**Cette étude permettra donc infine de souligner la cohérence et l'efficacité du système sociofiscal au périodes de transition professionnelle et, le cas échéant, visera à proposer des réformes pertinentes.**
 
-## Conception de la base 
+# Conception de la base 
 
 ```{r connection base, , include=FALSE, echo=FALSE }
 con <- dbConnect(RPostgres::Postgres(),
@@ -50,23 +52,19 @@ con <- dbConnect(RPostgres::Postgres(),
 ```
 
 
-On constitue une première base avec les informations individuelles, notamment le sexe et la date de naissance, en se restraignant à 10000 individus appartenant à la catégorie des XXXX. 
+On constitue une première base avec les informations individuelles, notamment le sexe et la date de naissance, en se restraignant d'une part aux agriculteurs et d'autres part à 10000 individus selectionnés au hasard dans la population générale. 
 
-```{r import, message=FALSE, warning=FALSE, include=FALSE}
-# les informations individuelles
+```{r import, message=FALSE, warning=FALSE, include=FALSE, echo=FALSE}
+# les informations individuelles population totale
 base_id <- dbGetQuery(con,"SELECT id as id_assure, sexe, date_naissance,niveau_formation_plus_eleve FROM ddadtassure
                       ORDER BY id
                       LIMIT 10000")
 
 # on se limte aux identifiant < à une certaine valeur
 tail(sort(base_id$id))# 86357
-```
 
-On ajoute à ces individus les salaires mensuels percus (montant net versé) : les lignes sont en conséquence dupliquées 60 fois (12 mois sur 5 ans) pour chaque individus. 
-
-```{r versement, message=FALSE, warning=FALSE, include=FALSE}
 ## grosse requête de la base versement
-base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_assure, nature_contrat, quotite, quotite_categorie, statut_conventionnel, modalite_temps, sexe, date_naissance, motif_rupture, date_fin_contrat, pcs_ese,statut_emploi FROM ddadtversement
+base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_assure, nature_contrat, quotite, quotite_categorie, statut_conventionnel, modalite_temps, sexe, date_naissance, niveau_formation_plus_eleve,motif_rupture, date_fin_contrat, pcs_ese,statut_emploi FROM ddadtversement
                           LEFT JOIN ddadtemployeur_assure ON ddadtversement.id_employeur_assure = ddadtemployeur_assure.id
                           LEFT JOIN ddadtcontrat ON ddadtemployeur_assure.id = ddadtcontrat.id_employeur_assure
                           LEFT JOIN ddadtassure ON ddadtemployeur_assure.id_assure = ddadtassure.id
@@ -74,17 +72,6 @@ base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_a
 setDT(base_versement)  
 base_versement[, mois := month(date_versement)][, annee := year(date_versement)]
 
-```
-
-
-Enfin sur cette base cylindrée on ajoute les informations existantes portant sur : 
-- la nature du contrat (CDI, CDD);
-- la quotité horaire travaillée : temps plein ou partiel ; 
-- secteur : agriculteur, artisan ... (10 modalités);
-- raison de rupture : licenciements, ruptures, fin de contrat ;
-- CPS.
-
-```{r contrat, message=FALSE, warning=FALSE, include=FALSE}
 ## base arrêt travail
 base_arret_trav<- dbGetQuery(con, "SELECT id_assure, motif_arret, date_dernier_jour_travaille, date_reprise FROM ddadtcontrat
                              LEFT JOIN ddadtarret_trav ON  ddadtcontrat.id= ddadtarret_trav.id_contrat
@@ -108,11 +95,11 @@ base_id_mois_arret = base_id_mois_arret[, .(motif_arret=motif_arret[1]),.(id_ass
 base_id_mois <- base_versement[, 
                              .(montant_net_verse = sum(montant_net_verse),
                                quotite = sum(quotite)),                             
-                             by=.(id_assure, annee, mois)]
+                             by=.(id_assure, annee, mois,sexe)]
 
 
 ## création de la base individuelle
-base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe)])
+base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe, niveau_formation_plus_eleve)])
 
 ## préapration de la base cylindrée (pour remplir tous les mois, même qd y a pas de versement pour l'id)
 base_cylindree=CJ(id_assure = unique(base_id_mois$id_assure), annee=2019:2023, mois=1:12)
@@ -128,21 +115,126 @@ base_finale <- base_cylindree[, .(id_assure, annee, mois, statut = fcase(
   !is.na(motif_arret), "autre arret",
   quotite >= 150, "temps plein",
   default = "temps partiel"))]
- base_finale[,.N,statut]
+ 
+
 ```
 
+```{r,message=FALSE, warning=FALSE, include=FALSE, echo=FALSE}
+#Agriculteurs
+## grosse requête de la base versement
+base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_assure, nature_contrat, quotite, quotite_categorie, statut_conventionnel, modalite_temps, sexe, date_naissance, motif_rupture, date_fin_contrat, pcs_ese,statut_emploi, niveau_formation_plus_eleve FROM ddadtversement
+                          LEFT JOIN ddadtemployeur_assure ON ddadtversement.id_employeur_assure = ddadtemployeur_assure.id
+                          LEFT JOIN ddadtcontrat ON ddadtemployeur_assure.id = ddadtcontrat.id_employeur_assure
+                          LEFT JOIN ddadtassure ON ddadtemployeur_assure.id_assure = ddadtassure.id
+                           WHERE statut_conventionnel= '01'" )
+setDT(base_versement)  
+base_versement[, mois := month(date_versement)][, annee := year(date_versement)]
+
+
+## base arrêt travail
+base_arret_trav<- dbGetQuery(con, "SELECT id_assure, motif_arret, date_dernier_jour_travaille, date_reprise FROM ddadtcontrat
+                             LEFT JOIN ddadtarret_trav ON  ddadtcontrat.id= ddadtarret_trav.id_contrat
+                             LEFT JOIN ddadtemployeur_assure ON ddadtcontrat.id_employeur_assure = ddadtemployeur_assure.id
+                             WHERE statut_conventionnel= '01'")
+setDT(base_arret_trav)
+base_arret_trav <- unique(base_arret_trav)
+base_arret_trav[
+  , date_fin := year(date_dernier_jour_travaille)+(month(date_dernier_jour_travaille)-1)/12][
+    , date_reprise := year(date_reprise)+(month(date_reprise)-1)/12]
+
+# on enleve qq doublons
+base_id_mois_arret <-base_arret_trav[
+  ,.(date = seq(fcoalesce(date_fin[1],2019), fcoalesce(date_reprise[1], 2024), by=1/12)),
+  by=.(id_assure,motif_arret, date_dernier_jour_travaille)][
+    ,.(id_assure, motif_arret, annee=floor(date), mois = round((date-floor(date))*12+1))
+  ]
+base_id_mois_arret = unique(base_id_mois_arret)
+base_id_mois_arret = base_id_mois_arret[, .(motif_arret=motif_arret[1]),.(id_assure, annee, mois)]
+## création de la vraie base id*mois (un individu peut avoir plusieurs versements le même mois)
+base_id_mois <- base_versement[, 
+                             .(montant_net_verse = sum(montant_net_verse),
+                               quotite = sum(quotite)),                             
+                             by=.(id_assure, annee, mois,sexe)]
+
+
+## création de la base individuelle
+base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe, niveau_formation_plus_eleve)])
+
+## préapration de la base cylindrée (pour remplir tous les mois, même qd y a pas de versement pour l'id)
+base_cylindree=CJ(id_assure = unique(base_id_mois$id_assure), annee=2019:2023, mois=1:12)
+
+base_cylindree <- base_id_mois[base_cylindree, on = .(id_assure, annee,mois)]
+base_cylindree <- base_id_mois_arret[base_cylindree, on = .(id_assure, annee,mois)]
+
+## création de la variable de statut mensuel
+base_finale_agr <- base_cylindree[, .(id_assure, annee, mois,sexe, statut = fcase(
+  is.na(montant_net_verse), "absent",
+  motif_arret=="01", "arret maladie", 
+  motif_arret %in% c("02","03"),"Congé maternité/paternité", 
+  !is.na(motif_arret), "autre arret",
+  quotite >= 150, "temps plein",
+  default = "temps partiel"))]
+ base_finale[,.N,statut]
+ 
+ 
+ # Utiliser fill pour propager les valeurs du sexe
+#base_finale_agr<- base_finale_agr %>%
+   #group_by(id_assure) %>%
+  # arrange(id_assure, annee, mois) %>%
+   #fill(sexe, .direction = "downup")
+```
+
+
+On ajoute à ces individus les salaires mensuels percus (montant net versé) : les lignes sont en conséquence dupliquées 60 fois (12 mois sur 5 ans) pour chaque individus. 
+
+
+Enfin sur cette base cylindrée on ajoute les informations existantes portant sur : 
+- la nature du contrat (CDI, CDD);
+- la quotité horaire travaillée : temps plein ou partiel ; 
+- secteur : agriculteur, artisan ... (10 modalités);
+- raison de rupture : licenciements, ruptures, fin de contrat ;
+- CPS.
+
+# Statisques descriptives
+
+Les informations individuelles se présentent sous la forme suivante. 
 
 ```{r base ind, echo=FALSE, message=FALSE, warning=FALSE}
 head(base_finale)
 ```
 
+**Au sein de la population générale, dans 6 cas sur 10, l'individu connait une interruption d'activité (chômage , ASS etc).** 
+```{r contrat, message=FALSE, warning=FALSE, echo=FALSE}
+
+tableau1<-base_finale[,.N,statut]
+
+tableau1[, Pourcentage := round((N / sum(N)) * 100, 2)]
+
+
+kable(tableau1, col.names = c("Statut", "Nombre de mois", "Pourcentage"), caption = "Population générale") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+
+```
+**Les agriculteurs connaissent davantage d'interruption que la population générale.** 
+```{r echo=FALSE, warning=FALSE}
+tableau2<-base_finale_agr[,.N,statut]
+
+tableau2[, Pourcentage := round((N / sum(N)) * 100, 2)]
+
+kable(tableau2, col.names = c("Statut", "Nombre de mois", "Pourcentage"), caption = "Agriculteurs") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```
+L'objectif est d'analyser ces interruptions d'activité. 
+
 Afin de renforcer la fiabilité des données, on ne garde que les données entre 2021 et mai 2023. On observe en effet beaucoup de données manquantes avant cette période.
 
 ```{r filtre année, include=FALSE}
-base_finale_reduit <- base_finale[annee >= 2021 & !(annee == 2023 & mois > 5)]
+base_finale_reduit <- base_finale_agr[annee >= 2021 & !(annee == 2023 & mois > 5)]
 ```
 
-Enfin on ne garde dans cette base finale que les individus qui ont effectivement 60 mois renseignés et qui connaissent un changement de statut. 
+Enfin on ne garde dans cette base finale que les individus qui ont effectivement 60 mois renseignés et qui connaissent un changement de statut.  
 
 ```{r filtre age changement, include=FALSE}
 # on ne garde que les gens qui ont au moins un chgt de statut observé
@@ -156,7 +248,7 @@ base_finale_reduit <- base_id[,.(id_assure, categorie)][base_finale_reduit, on =
 ```
 
 
-## Méthodologie de l'analyse de séquences
+# Méthodologie de l'analyse de séquences
 
 
 La méthodologie est fortement inspirée de l'analyse de Nicolas Robette intitulé L’analyse de séquences : une introduction avec le logiciel R et le package TraMineR et publié sur le blog Quanti (http://quanti.hypotheses.org/686/).
@@ -177,41 +269,67 @@ suite.om = seqdist(suite, method ="LCS")
 Une matrice des distances ou des dissimilarités entre séquences peut ensuite être utilisée pour une classification ascendante hiérarchique, qui permet de regrouper les séquences en un certain nombre de « classes » en fonction de leur proximité :
 
 
-```{r dendogram, echo=FALSE, message=FALSE, warning=FALSE}
+```{r dendogram, message=FALSE, warning=FALSE, include=FALSE}
 suite.dist <- hclust(as.dist(suite.om), method = "ward.D2")
 plot(as.dendrogram(suite.dist), leaflab = "none")
 ```
 
-De même, on peut représenter les sauts d’inertie qui suggère que 4 grandes classifications sont pertinentes. L’observation, sur ce dendogramme ou sur la courbe des sauts d’inertie, des sauts d’inertie des dernières étapes de la classification peut servir de guide pour déterminer le nombre de classes que l’on va retenir pour la suite des analyses. Une première inflexion dans la courbe des sauts d’inertie apparaît au niveau d’une partition en 5 classes.
+De même, on peut représenter les sauts d’inertie qui suggère que 4 grandes classifications sont pertinentes. L’observation, sur ce dendogramme ou sur la courbe des sauts d’inertie, des sauts d’inertie des dernières étapes de la classification peut servir de guide pour déterminer le nombre de classes que l’on va retenir pour la suite des analyses. Une première inflexion dans la courbe des sauts d’inertie apparaît au niveau d’une partition en 3 clusters.
 
 
-```{r dendogramplot, message=FALSE, warning=FALSE, include=FALSE, fig.width=6, fig.height=4}
+```{r echo=FALSE, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
 ## graphe pour voir le nombre de classes qu'on veut
 plot(sort(suite.dist$height, decreasing = TRUE)[1:20], type = "s", xlab = "nb de classes", ylab = "inertie")
 
 ## on regarde les ruptures (= marches qui deviennent d'un coup plus petites) et on choisit le nombre de classes associées
-nbcl = 4
+nbcl = 3
 suite.part = cutree(suite.dist, nbcl)
 
 # analyse graphique
 ```
 
+Chacune des classes semble caractérisée par un type d'activité principal : des agriculteurs absents (classe 1); en temps pleins (classe 2) ; temps partiels (classe 3). Cependant on apercoit aussi des couches d'autres couleurs indiquant que l'ensemble des carrières d'agriculteurs sont interrompues. 
 
-```{r dendogramplot, message=FALSE, warning=FALSE, include=FALSE, fig.width=6, fig.height=4}
+```{r, echo=FALSE, fig.height=5, fig.width=8, message=FALSE, warning=FALSE}
 seqdplot(suite, group = suite.part, border = NA)
-#seqIplot(suite, group = suite.part)
-seqfplot(suite, group = suite.part) # les suites les plus fréquentes
-seqmsplot(suite, group = suite.part)
-seqrplot(suite, group =suite.part, dist.matrix = suite.om, criterion = "dist")
-
-freq(suite.part)
-cprop(table(suite.part, base_id[id_assure %in% unique(base_finale_reduit[categorie=="normal"]$id_assure)]$sexe))
 ```
 
-## Résultats et enseignements à partir des enseignements graphiques 
 
-1. On observe X% qui restent en temps pleins pendant les 5 ans (groupe 1), X% qui est en temps partiel(groupe 4), X% qui connait des arrêts maladie ou congés (groupes 2,4). 
-2. Au sein des arrêts (groupe 3), on observe X% qui connaissent un enchainement arret maladie et temps pleins. Cette situation touche davantage ??? (sexe, pcs, age),on observe X% qui connaissent un enchainement congé maladie et temps pleins. Cette situation touche davantage ??? (sexe, pcs, age)
-3. Au sein des absents (groupe 2), probablement chômage / ASS / RSA, on observe une sur représentation au sein de la PCS.
-4. Petit zoom congés maternité
-5. En 2021, parmi les personnes âgées de 25 à 60 ans percevant une rémunération, XXX % le sont encore trois mois après, XX % se retrouvent sans remunération. Ventilation par âge / sexe ?
+```{r dendogramplot, echo=FALSE, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+#seqfplot(suite, group = suite.part) # les suites les plus fréquentes
+#seqmsplot(suite, group = suite.part)
+#seqrplot(suite, group =suite.part, dist.matrix = suite.om, criterion = "dist")
+```
+
+Les femmes sont sur représentées dans les agriculteurs toujours absent.e.s (groupe 1) et dans les temps partiels (groupe 3) mais à l'inverse moins dans les emplois à temps plein (groupe 2).
+```{r, echo=FALSE, fig.height=4, fig.width=6, message=FALSE, warning=FALSE}
+options(digits = 2)
+
+req_suite_part <- freq(suite.part)
+
+# Calculer les proportions croisées entre 'suite.part' et 'sexe'
+cprop_suite_part_sexe <- cprop(table(suite.part, base_id[id_assure %in% unique(base_finale_reduit[categorie=="base"]$id_assure)]$sexe))
+
+# Afficher les proportions croisées avec kableExtra
+kable(cprop_suite_part_sexe, caption = "Part des hommes et des femmes agriculteurs dans les clusters modélisés") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+# Principaux résultats et pistes d'amélioration 
+
+**Principaux enseignements : **
+
+- Les agriculteurs connaissent une carrière plus hachée que la population générale. 
+
+- Le temps plein des agriculteurs protège relativement plus de l'interruption d'activité. A l'inverse les agriculteurs ayant connu une periode d'interruption longue retrouvent à une faible probabilité un emploi à temps partiel. 
+
+- Les femmes sont sur représentées dans les agriculteurs toujours absent.e.s (groupe 1) et dans les temps partiels (groupe 3) mais à l'inverse moins dans les emplois à temps plein (groupe 2).
+
+
+**Pistes d'amélioration :**
+
+-  Généralisation à l'ensemble des PCS
+
+- Chiffrage de la perte monétaire liée à la période d'interruption
+
+-  Rôle contracyclique du système de protection social pouvant mener à des pistes de réformes pour les populations les plus fragiles.
