@@ -1,5 +1,5 @@
 ---
-title: "Analyse trajectoires types "
+title: "Analyse trajectoires types des XXX "
 author: "Coraline Best, Léo Quennesson, Clément Rousset"
 date: "2024-05-14"
 output: 
@@ -19,31 +19,117 @@ p_load(dplyr, ggplot2, tidyverse, readxl, rlang, lubridate, zoo, runner, TraMine
 
 # Objectifs de l'étude 
 
-Les carrières des personnes changent au fil du temps pour plusieurs raisons. Les transitions peuvent être analysées au travers du prisme de l'âge des individus, mais également du type d'emploi occupé et des grands événements de la vie.
+Cette étude vise à détailler les évolutions des carrières des individus sur une période de 5 ans. 
 
-Si l'on considère l'âge de l'individu, les transitions professionnelles sont : 
+Ces transitions peuvent être analysées au travers du prisme de l'âge des individus, mais également du type d'emploi occupé et des grands événements de la vie.
+
+Si l'on considère l'âge de l'individu, les transitions professionnelles peuvent être analysées : 
 
 - Avant leur vie professionnelle, les individus participent pas ou peu au marché du travail afin **d'étudier**; 
-- Par la suite, les individus participent par la suite au marché du travail, cherchant un **emploi** qui correspond à leurs qualifications et à leurs intérêts. 
+- Par la suite, les individus participent au marché du travail, cherchant un **emploi** qui correspond à leurs qualifications et à leurs intérêts. 
 - Enfin en fin de carrière, les individus quittent leur emploi pour bénéficier de leur **retraite**.
 
 Pendant les périodes de participation au marché du travail, de nombreux évènements peuvent interrompre ou mettre **fin à un contrat**. Que ce soit un licenciement ou un changement de poste, un arrêt maladie ou de formation, un congé sabatique, ces changements de situation viennent modifier le revenu des individus. 
 
 Ces changements de situation, de nature diverse, touchent inégalement les individus. A titre illustratif, il est possible de ventiler le marché du travail entre des emplois à temps plein et partiel. On peut ainsi se demander si ces deux formes d'emplois sont complémentaires dans la vie d'un individu. Ces transitions font partie intégrante de la vie professionnelle : afin de répondre à ces questions, l'étude doit nécessairement prendre en compte les facteurs personnels, économiques ou encore sociaux des individus.
 
-**L'objectif de cette étude** est de dresser un **portrait robot** des principales transitions rencontrées dans la vie des individus au cours de leur vie professionnelle. L'objectivation d'une part, la quantification d'autre part de ces étapes importantes, serviront à la DREES à affiner la simulation des transitions professionnelles. 
+**L'objectif de cette étude** est de dresser un **portrait robot** des principales transitions rencontrées dans la vie des individus au cours de leur vie professionnelle. L'objectivation et la quantification de ces transitions  serviront dans une seconde phase à la DREES à affiner les simulations des transitions professionnelles par population concernée. 
 
-L'objectif sur plus long terme est de voir si le rôle contra-cyclique du système de protection sociale est en cohérence avec ces périodes d'interruption comme de reprise. En effet prestations sociales - et en premier lieu le RSA, la prime d'activité, l'allocation de solidarité spécifique et les allocations logement -cotisations et impôts participent au lissage du revenu des individus pendant ces périodes de transition.
+Les variations de salaire liées à ces transitions professionnelles sont à mettre en regard avec un ensemble de mécanisme visant à limiter et à lisser dans le temps les pertes de revenus. En effet prestations sociales - et en premier lieu le RSA, la prime d'activité, l'allocation de solidarité spécifique et les allocations logement - mais aussi les cotisations et impôts, participent au lissage du revenu des individus pendant ces périodes de transition. 
+
+Cette étude permettra donc *infine* de souligner la cohérence et l'efficacité du système sociofiscal au périodes de transition professionnelle et, le cas échéant, visera à proposer des réformes pertinentes.
 
 ## Conception de la base 
 
-On constitue une première base avec les informations individuelles, notamment le sexe et la date de naissance, en se restraignant à 10000 individus pour des questions techniques. On ajoute à ces individus les salaires mensuels percus (montant net versé) : les lignes sont en conséquence dupliquées 60 fois (12 mois sur 5 ans) pour chaque individus. Enfin sur cette base cylindrée on ajoute les informations existantes portant sur : 
-- la nature du contrat : CDI, CDD
-- la quotité horaire travaillée : temps plein ou partiel
-- secteur : agriculteur, artisan (10 modalités)
-- raison de rupture : licenciements, ruptures, fin de contrat
+```{r connection base, , include=FALSE, echo=FALSE }
+con <- dbConnect(RPostgres::Postgres(),
+                  host='10.0.0.1',
+                  dbname="dsn",
+                  user="u262d",
+                  password = "063fdd4e96")
+```
+
+
+On constitue une première base avec les informations individuelles, notamment le sexe et la date de naissance, en se restraignant à 10000 individus appartenant à la catégorie des XXXX. 
+
+```{r import, echo=TRUE, message=FALSE, warning=FALSE}
+# les informations individuelles
+base_id <- dbGetQuery(con,"SELECT id as id_assure, sexe, date_naissance,niveau_formation_plus_eleve FROM ddadtassure
+                      ORDER BY id
+                      LIMIT 10000")
+
+# on se limte aux identifiant < à une certaine valeur
+tail(sort(base_id$id))# 86357
+```
+
+On ajoute à ces individus les salaires mensuels percus (montant net versé) : les lignes sont en conséquence dupliquées 60 fois (12 mois sur 5 ans) pour chaque individus. 
+
+```{r versement, message=FALSE, warning=FALSE, include=FALSE}
+## grosse requête de la base versement
+base_versement <- dbGetQuery(con,"SELECT date_versement, montant_net_verse, id_assure, nature_contrat, quotite, quotite_categorie, statut_conventionnel, modalite_temps, sexe, date_naissance, motif_rupture, date_fin_contrat, pcs_ese,statut_emploi FROM ddadtversement
+                          LEFT JOIN ddadtemployeur_assure ON ddadtversement.id_employeur_assure = ddadtemployeur_assure.id
+                          LEFT JOIN ddadtcontrat ON ddadtemployeur_assure.id = ddadtcontrat.id_employeur_assure
+                          LEFT JOIN ddadtassure ON ddadtemployeur_assure.id_assure = ddadtassure.id
+                           WHERE id_assure < 86357")
+setDT(base_versement)  
+base_versement[, mois := month(date_versement)][, annee := year(date_versement)]
+
+```
+
+
+Enfin sur cette base cylindrée on ajoute les informations existantes portant sur : 
+- la nature du contrat (CDI, CDD);
+- la quotité horaire travaillée : temps plein ou partiel ; 
+- secteur : agriculteur, artisan ... (10 modalités);
+- raison de rupture : licenciements, ruptures, fin de contrat 
 - CPS
-                          
+
+```{r contrat, message=FALSE, warning=FALSE, include=FALSE}
+## base arrêt travail
+base_arret_trav<- dbGetQuery(con, "SELECT id_assure, motif_arret, date_dernier_jour_travaille, date_reprise FROM ddadtcontrat
+                             LEFT JOIN ddadtarret_trav ON  ddadtcontrat.id= ddadtarret_trav.id_contrat
+                             LEFT JOIN ddadtemployeur_assure ON ddadtcontrat.id_employeur_assure = ddadtemployeur_assure.id
+                             WHERE id_assure < 86357")
+setDT(base_arret_trav)
+base_arret_trav <- unique(base_arret_trav)
+base_arret_trav[
+  , date_fin := year(date_dernier_jour_travaille)+(month(date_dernier_jour_travaille)-1)/12][
+    , date_reprise := year(date_reprise)+(month(date_reprise)-1)/12]
+
+# on enleve qq doublons
+base_id_mois_arret <-base_arret_trav[
+  ,.(date = seq(fcoalesce(date_fin[1],2019), fcoalesce(date_reprise[1], 2024), by=1/12)),
+  by=.(id_assure,motif_arret, date_dernier_jour_travaille)][
+    ,.(id_assure, motif_arret, annee=floor(date), mois = round((date-floor(date))*12+1))
+  ]
+base_id_mois_arret = unique(base_id_mois_arret)
+base_id_mois_arret = base_id_mois_arret[, .(motif_arret=motif_arret[1]),.(id_assure, annee, mois)]
+## création de la vraie base id*mois (un individu peut avoir plusieurs versements le même mois)
+base_id_mois <- base_versement[, 
+                             .(montant_net_verse = sum(montant_net_verse),
+                               quotite = sum(quotite)),                             
+                             by=.(id_assure, annee, mois)]
+
+
+## création de la base individuelle
+base_id <- unique(base_versement[, .(id_assure, date_naissance, sexe)])
+
+## préapration de la base cylindrée (pour remplir tous les mois, même qd y a pas de versement pour l'id)
+base_cylindree=CJ(id_assure = unique(base_id_mois$id_assure), annee=2019:2023, mois=1:12)
+
+base_cylindree <- base_id_mois[base_cylindree, on = .(id_assure, annee,mois)]
+base_cylindree <- base_id_mois_arret[base_cylindree, on = .(id_assure, annee,mois)]
+
+## création de la variable de statut mensuel
+base_finale <- base_cylindree[, .(id_assure, annee, mois, statut = fcase(
+  is.na(montant_net_verse), "absent",
+  motif_arret=="01", "arret maladie", 
+  motif_arret %in% c("02","03"),"Congé maternité/paternité", 
+  !is.na(motif_arret), "autre arret",
+  quotite >= 150, "temps plein",
+  default = "temps partiel"))]
+ base_finale[,.N,statut]
+```
 
 
 ```{r base ind, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
@@ -87,5 +173,8 @@ De même, on peut représenter les sauts d’inertie qui suggère que 4 grandes 
 
 ## Résultats et enseignements à partir des enseignements graphiques 
 
-
-En 2021, parmi les personnes âgées de 25 à 60 ans percevant une rémunération, XXX % le sont encore trois mois après, XX % se retrouvent sans remunération. Ventilation par âge / sexe ?
+1. On observe X% qui restent en temps pleins pendant les 5 ans (groupe 1), X% qui est en temps partiel(groupe 4), X% qui connait des arrêts maladie ou congés (groupes 2,4). 
+2. Au sein des arrêts (groupe 3), on observe X% qui connaissent un enchainement arret maladie et temps pleins. Cette situation touche davantage ??? (sexe, pcs, age),on observe X% qui connaissent un enchainement congé maladie et temps pleins. Cette situation touche davantage ??? (sexe, pcs, age)
+3. Au sein des absents (groupe 2), probablement chômage / ASS / RSA, on observe une sur représentation au sein de la PCS.
+4. Petit zoom congés maternité
+5. En 2021, parmi les personnes âgées de 25 à 60 ans percevant une rémunération, XXX % le sont encore trois mois après, XX % se retrouvent sans remunération. Ventilation par âge / sexe ?
